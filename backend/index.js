@@ -22,61 +22,79 @@ mongoose.connect(config.connectionString).then(() => {
 });
 
 
-
-
 const app = express();
 app.use(express.json());
-app.use(cors({ origin: "*"}));
+
+const corsOptions = {
+    origin: 'http://localhost:5173', // specify your frontend's URL
+    credentials: true,
+    optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+  };
+  
+app.use(cors(corsOptions));
 
 // Create Account
 app.post("/create-account", async (req, res) => {
+    console.log(req.body);
+  
     const { fullName, email, password } = req.body;
-    if (!fullName || !email || !password)
-    return res
-    .status(400)
-    .json({
-        error: true, message: "All fields are required"
-    });
-
-    const isUser = await User.findOne({ email });
-    if (isUser) {
-        return res
+  
+    if (!fullName || !email || !password) {
+      return res
         .status(400)
         .json({
-            error: true, message: "User with this email already exists"
+          error: true,
+          message: "All fields are required",
         });
     }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({
+  
+    const isUser = await User.findOne({ email });
+  
+    if (isUser) {
+      return res
+        .status(400)
+        .json({
+          error: true,
+          message: "User with this email already exists",
+        });
+    }
+  
+    try {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const user = new User({
         fullName,
         email,
         password: hashedPassword,
-    });
-
-    
-    await user.save();
-
-    const accessToken = jwt.sign(
+      });
+  
+      await user.save();
+  
+      const accessToken = jwt.sign(
         { userId: user._id },
         process.env.ACCESS_TOKEN_SECRET,
         { expiresIn: "1d" }
-    );
-
-    return res
-    .status(200)
-    .json({
-        error: false, 
-        user: {
+      );
+  
+      return res
+        .status(200)
+        .json({
+          error: false,
+          user: {
             fullName: user.fullName,
-            email: user.email
-        },
-        accessToken,
-        message: "User created successfully"
-    });
-
-
-    
+            email: user.email,
+          },
+          accessToken,
+          message: "User created successfully",
+        });
+    } catch (error) {
+      console.error(error);
+      return res
+        .status(500)
+        .json({
+          error: true,
+          message: "Error creating account",
+        });
+    }
 });
 
 // Login
@@ -197,7 +215,7 @@ app.post("/image-upload", upload.single("image"), async (req, res) => {
         }
         
         const imageUrl = `http://localhost:5000/uploads/${req.file.filename}`;
-        res.status(201).json({ imageUrl });
+        res.status(200).json({ imageUrl });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: true, message: error.message });
@@ -242,7 +260,7 @@ app.put("/edit-story/:id", authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { title, story, visitedLocation, imageUrl, visitedDate } = req.body;
     const { userId } = req.user;
-    if (!title || !story || !imageUrl || !visitedLocation || !visitedDate) {
+    if (!title || !story || !visitedLocation || !visitedDate) {
         return res
         .status(400)
         .json({
@@ -362,25 +380,48 @@ app.get("/search", authenticateToken, async (req, res) => {
   });
 
 // Filter travel stories by date range
-app.get("travel-stories/filter", authenticateToken, async (req, res) => {
-    const { startDate, endDate } = req.query;
-    const { userId } = req.user;
+// app.get("/travel-stories/filter", authenticateToken, async (req, res) => {
+//     const { startDate, endDate } = req.query;
+//     const { userId } = req.user;
 
-    try{
-        // Convert startDate and endDATE from milliseconds to Date objects
-        const start = new Date(parseInt(startDate));
-        const end = new Date(parseInt(endDate));
+//     try{
+//         // Convert startDate and endDATE from milliseconds to Date objects
+//         const start = new Date(parseInt(startDate));
+//         const end = new Date(parseInt(endDate));
 
-        // Find travel stories that belong to the authenticated user and fall within the date range
-        const filterStories = await TravelStory.find({
-            userId: userId,
-            visitedDate: { $gte: start, $lte: end }, 
-        }).sort({ isFavourite: -1 });
+//         // Find travel stories that belong to the authenticated user and fall within the date range
+//         const filterStories = await TravelStory.find({
+//             userId: userId,
+//             visitedDate: { $gte: start, $lte: end }, 
+//         }).sort({ isFavourite: -1 });
 
-        res.status(200).json({stories: filteredStories});
-    }catch(error){
-        res.status(500).json({ error: true, message: error.message });
-    }
+//         res.status(200).json({stories: filteredStories});
+//     }catch(error){
+//         res.status(500).json({ error: true, message: error.message });
+//     }
+// });
+
+// Filter travel stories by date range
+app.get("/travel-stories/filter", authenticateToken, async (req, res) => {
+  const { startDate, endDate } = req.query;
+  const { userId } = req.user;
+
+  try{
+      // Convert startDate and endDATE from milliseconds to Date objects
+      const start = new Date(parseInt(startDate));
+      const end = new Date(parseInt(endDate));
+
+      // Find travel stories that belong to the authenticated user and fall within the date range
+      const filterStories = await TravelStory.find({
+          userId: userId,
+          visitedDate: { $gte: start, $lte: end }, 
+      }).sort({ isFavourite: -1 });
+
+      res.status(200).json({stories: filterStories});
+  }catch(error){
+      console.error(error); // Add this line to log the error message
+      res.status(500).json({ error: true, message: error.message });
+  }
 });
 
 
